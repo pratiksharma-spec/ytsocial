@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { YoutubeTranscript } from 'youtube-transcript';
 import { GoogleGenAI } from '@google/genai';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -8,57 +9,17 @@ export async function POST(request: Request) {
     const { url } = await request.json();
     if (!url) return NextResponse.json({ error: 'URL is required' }, { status: 400 });
 
-    let videoId = "";
+    console.log("Fetching transcript locally for:", url);
+    let transcriptItems;
     try {
-        const urlObj = new URL(url);
-        if (urlObj.hostname.includes("youtu.be")) {
-            videoId = urlObj.pathname.slice(1);
-        } else {
-            videoId = urlObj.searchParams.get("v") || "";
-        }
-    } catch(e) {}
-    if (!videoId) return NextResponse.json({ error: 'Invalid YouTube URL' }, { status: 400 });
-
-    console.log("Fetching transcript from RapidAPI for Video ID:", videoId);
+      transcriptItems = await YoutubeTranscript.fetchTranscript(url);
+    } catch (e) {
+       console.error("Transcript Error:", e);
+       return NextResponse.json({ error: 'Failed to extract transcript. Please ensure the video has closed captions/subtitles enabled and is not age restricted.' }, { status: 400 });
+    }
     
-    // Ensure the user has put RAPID_API_KEY in Vercel environment variables
-    const rapidApiKey = process.env.RAPID_API_KEY;
-    if (!rapidApiKey) {
-      throw new Error("Missing RAPID_API_KEY environment variable. Please add it to your Vercel project settings.");
-    }
-
-    // Using the popular 'YouTube Transcript' API structure on RapidAPI
-    const transcriptRes = await fetch(`https://youtube-transcripts.p.rapidapi.com/youtube/transcript?url=https://www.youtube.com/watch?v=${videoId}&chunkSize=500`, {
-        method: 'GET',
-        headers: {
-            'x-rapidapi-host': 'youtube-transcripts.p.rapidapi.com',
-            'x-rapidapi-key': rapidApiKey
-        }
-    });
-
-    if (!transcriptRes.ok) {
-        throw new Error(`Proxy API Error (${transcriptRes.status}): Make sure you are subscribed to the "YouTube Transcript" API on RapidAPI and your key is correct.`);
-    }
-
-    const transcriptData = await transcriptRes.json();
-    
-    // Parse the returned format
-    let fullText = "";
-    if (Array.isArray(transcriptData)) {
-         // Some endpoints return a direct array
-         fullText = transcriptData.map((item: any) => item.text).join(' ');
-    } else if (transcriptData.content) {
-         // Some endpoints wrap it in a content array
-        fullText = transcriptData.content.map((item: any) => item.text).join(' ');
-    } else {
-        throw new Error("RapidAPI returned a transcript format we do not understand. Please check your RapidAPI Subscription.");
-    }
-
-    if (!fullText) {
-        return NextResponse.json({ error: 'This video does not have English captions available.' }, { status: 400 });
-    }
-
-    const safeText = fullText.slice(0, 30000); // Token limits safeguard
+    const fullText = transcriptItems.map((item: any) => item.text).join(' ');
+    const safeText = fullText.slice(0, 30000); 
 
     const prompt = `You are an expert social media manager and copywriter. 
 I will provide you with the transcript of a YouTube video. 
