@@ -1,25 +1,14 @@
 import { NextResponse } from 'next/server';
-import { YoutubeTranscript } from 'youtube-transcript';
 import { GoogleGenAI } from '@google/genai';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export async function POST(request: Request) {
   try {
-    const { url } = await request.json();
-    if (!url) return NextResponse.json({ error: 'URL is required' }, { status: 400 });
+    const { transcriptText } = await request.json();
+    if (!transcriptText) return NextResponse.json({ error: 'System failed to pass Transcript text to the API. Ensure your video has valid text.' }, { status: 400 });
 
-    console.log("Fetching transcript locally for:", url);
-    let transcriptItems;
-    try {
-      transcriptItems = await YoutubeTranscript.fetchTranscript(url);
-    } catch (e) {
-       console.error("Transcript Error:", e);
-       return NextResponse.json({ error: 'Failed to extract transcript. Please ensure the video has closed captions/subtitles enabled and is not age restricted.' }, { status: 400 });
-    }
-    
-    const fullText = transcriptItems.map((item: any) => item.text).join(' ');
-    const safeText = fullText.slice(0, 30000); 
+    const safeText = transcriptText.slice(0, 30000); 
 
     const prompt = `You are an expert social media manager and copywriter. 
 I will provide you with the transcript of a YouTube video. 
